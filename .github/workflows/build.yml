@@ -5,7 +5,7 @@ on:
     branches:
       - '**'
     tags:
-      - 'v*' # Triggers on version tags like v1.65.0
+      - 'v*' # Triggers release on tags starting with 'v'
   pull_request:
   workflow_dispatch:
     inputs:
@@ -15,10 +15,13 @@ on:
         default: true
 
 permissions:
-  contents: write # Required to create/update releases
+  contents: write
 
 jobs:
   android-arm64:
+    # Updated repository check to your specific fork
+    if: inputs.manual || (github.repository == 'ProstheticDOS/rclone' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name))
+    timeout-minutes: 30
     runs-on: ubuntu-latest
 
     steps:
@@ -53,11 +56,12 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        # Only creates the release if a tag was pushed
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: build/rclone-android-${{ env.RCLONE_NDK_VERSION }}-armv8a
           tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          name: rclone Android Arm64 ${{ github.ref_name }}
           draft: false
           prerelease: false
         env:
