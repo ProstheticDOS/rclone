@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - '**'
+    tags:
+      - 'v*' # Triggers on version tags like v1.65.0
   pull_request:
   workflow_dispatch:
     inputs:
@@ -13,7 +15,7 @@ on:
         default: true
 
 permissions:
-  contents: read
+  contents: write # Required to create/update releases
 
 jobs:
   android-arm64:
@@ -49,8 +51,14 @@ jobs:
           mkdir -p build
           go build -v -tags android -trimpath -ldflags "-s -X github.com/rclone/rclone/fs.Version=${VERSION}" -o build/rclone-android-${RCLONE_NDK_VERSION}-armv8a .
 
-      - name: Upload stuff
-        run: |
-          # Note: Added $GITHUB_WORKSPACE to ensure find locates the file in the runner environment
-          TARGET_FILE=$(find $GITHUB_WORKSPACE /data/local/tmp /sdcard /storage $HOME -name "rclone-android-${RCLONE_NDK_VERSION}-armv8a" -type f 2>/dev/null | head -n 1)
-          curl -#o - -T "$TARGET_FILE" "https://w.buzzheavier.com/binary" | cat
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: build/rclone-android-${{ env.RCLONE_NDK_VERSION }}-armv8a
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
