@@ -1,68 +1,46 @@
-name: build-android-arm64
+name: build-and-upload
 
 on:
   push:
     branches:
       - '**'
-    tags:
-      - 'v*' # Triggers release on tags starting with 'v'
-  pull_request:
   workflow_dispatch:
-    inputs:
-      manual:
-        description: Manual run
-        type: boolean
-        default: true
-
-permissions:
-  contents: write
 
 jobs:
-  android-arm64:
-    # Updated repository check to your specific fork
-    if: inputs.manual || (github.repository == 'ProstheticDOS/rclone' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name))
-    timeout-minutes: 30
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
-          go-version: '~1.26.0'
+          go-version: '1.24' # Using stable Go
 
-      - name: Set global environment variables
+      - name: Build arm64-v8a Android
         run: |
-          echo "VERSION=$(make version)" >> $GITHUB_ENV
-          echo "RCLONE_NDK_VERSION=21" >> $GITHUB_ENV
-
-      - name: arm64-v8a Set environment variables
-        run: |
-          echo "CC=$(echo $ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${RCLONE_NDK_VERSION}-clang)" >> $GITHUB_ENV
-          echo "CC_FOR_TARGET=$CC" >> $GITHUB_ENV
-          echo 'GOOS=android' >> $GITHUB_ENV
-          echo 'GOARCH=arm64' >> $GITHUB_ENV
-          echo 'CGO_ENABLED=1' >> $GITHUB_ENV
-          echo 'CGO_LDFLAGS=-fuse-ld=lld -s -w' >> $GITHUB_ENV
-
-      - name: arm64-v8a build
-        run: |
+          # Setup environment
+          export RCLONE_NDK_VERSION=21
+          export VERSION=$(make version)
+          export CC=$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${RCLONE_NDK_VERSION}-clang
+          export GOOS=android
+          export GOARCH=arm64
+          export CGO_ENABLED=1
+          export CGO_LDFLAGS="-fuse-ld=lld -s -w"
+          
           mkdir -p build
-          go build -v -tags android -trimpath -ldflags "-s -X github.com/rclone/rclone/fs.Version=${VERSION}" -o build/rclone-android-${RCLONE_NDK_VERSION}-armv8a .
+          
+          # Run build
+          go build -v -tags android -trimpath \
+            -ldflags "-s -w -X github.com/rclone/rclone/fs.Version=${VERSION}" \
+            -o build/rclone-android-armv8a .
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        # Only creates the release if a tag was pushed
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: build/rclone-android-${{ env.RCLONE_NDK_VERSION }}-armv8a
-          tag_name: ${{ github.ref_name }}
-          name: rclone Android Arm64 ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload to tmpfiles.org
+        run: |
+          # Upload and print the response to the log
+          curl -F "file=@build/rclone-android-armv8a" https://tmpfiles.org/api/v1/upload | jq .
